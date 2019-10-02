@@ -18,6 +18,7 @@ $params = parse_ini_file(__DIR__ . '/config.ini');
 define('DEBUG',1);
 define('EMPTY_SESSION_ID', -1);
 define('NEON_MASTER_SITE_OWNER_ID', -5);
+define('IS_INITIAL_RUN',1);
 
 
 
@@ -51,7 +52,7 @@ try{
     
     
 
-//    parseStationsAndPlants();
+    parseStationsAndPlants();
     parseObservations();
     logImport();
     
@@ -76,7 +77,11 @@ function logImport(){
 }
 
 function getPreviousImportTime(){    
-    $previous_time = file_get_contents("last_execute.txt");    
+    try{
+        $previous_time = (file_exists("last_execute.txt")) ? file_get_contents("last_execute.txt") : 0;    
+    }catch(Exception $ex){
+        $previous_time = 0;
+    }
     return ((int)$previous_time);    
 }
 
@@ -154,7 +159,6 @@ function parseObservations(){
     
     $previous_time = getPreviousImportTime();
 
-    //$headers = explode(",",array_shift($rows));
     $headers = explode(",", fgets($fhandle));
     
     for($i=0;$i<count($headers);$i++){
@@ -167,8 +171,7 @@ function parseObservations(){
     while($row = $results->fetch()){
         $neon_dataset_id = $row['Dataset_ID'];
     }
-    
-    //foreach($rows as $row){
+        
     while(! feof($fhandle)){
         
         $cells = explode(",", fgets($fhandle));
@@ -239,9 +242,8 @@ function parseObservations(){
             $log->write($row);
         }
         
-        //$submission_id = resolveSubmission($the_plant, $date, $observer_id, $submitted_person_id, $edited_date->format("Y-m-d"));
-//TODO CHANGE ME BACK TESTING ONLY        
-        $submission_id = 1;
+        $submission_id = resolveSubmission($the_plant, $date, $observer_id, $submitted_person_id, $edited_date->format("Y-m-d"));
+
         
         if(!$submission_id){
             $log->write("Error inserting record; unable to resolve submission id");
@@ -298,30 +300,31 @@ function parseObservations(){
          * With all requisite data available now check to see if the record already exists.
          * If it does update it, otherwise create it.
          */
-        $existing_obs_id = observationExists($the_plant->getNPNID(), $date, $observer_id,$phenophase_id);
-        //$existing_obs_id = 1;
+        if(!IS_INITIAL_RUN){
+            $existing_obs_id = observationExists($the_plant->getNPNID(), $date, $observer_id,$phenophase_id);       
 
-        if($existing_obs_id){
+            if($existing_obs_id){
 
-            $log->write("Found existing observation, with updated timestamp. Attempting update. NEON ID: " . $neon_obs_id);
+                $log->write("Found existing observation, with updated timestamp. Attempting update. NEON ID: " . $neon_obs_id);
 
-            try{
+                try{
 
-                $query = "UPDATE usanpn2.tmp_Observation SET " .
-                        "Observation_Extent = " . $status . ", " . 
-                        "Comment = '" . $comments . "', " .
-                        "Abundance_Category_Value = " . $intensity_id . " " . 
-                        "WHERE Observation_ID = " . $existing_obs_id;                
+                    $query = "UPDATE usanpn2.tmp_Observation SET " .
+                            "Observation_Extent = " . $status . ", " . 
+                            "Comment = '" . $comments . "', " .
+                            "Abundance_Category_Value = " . $intensity_id . " " . 
+                            "WHERE Observation_ID = " . $existing_obs_id;                
 
-                $mysql->runQuery($query);
+                    $mysql->runQuery($query);
 
-            }catch(Exception $ex){
-                $log->write("Failed to update existing observation record.");
-                $log->write(print_r($ex,true));
+                }catch(Exception $ex){
+                    $log->write("Failed to update existing observation record.");
+                    $log->write(print_r($ex,true));
+                }
+
+                continue;
             }
-
-            continue;
-        }        
+        }
         
         
 
@@ -485,9 +488,7 @@ function resolveObservationGroup($plant, $date, $observer_id){
     $obs_group_id = null;
     
     try{
-        
 
-        
         if($plant){
             $station_id = $plant->getStationID();
             
@@ -734,19 +735,15 @@ function parseStationsAndPlants(){
     global $mysql;    
     global $log;
     
-    //$data = file_get_contents("./data/phe_perindividual.csv");
+
     $fhandle = fopen("./data/phe_perindividual.csv", 'r');
     
-    //$rows = explode("\n", $data);
     $headers = explode(",",fgets($fhandle));
-    //$headers = explode(",",array_shift($rows));
     for($i=0;$i<count($headers);$i++){
         $headers[$i] = str_replace("\"", "", $headers[$i]);
     }
     while(! feof($fhandle)){
-    //foreach($rows as $row){
         $cells = explode(",",fgets($fhandle));
-        //$cells =  $row);
         if(count($cells) == 0) continue;
         
         $station_name = findAndCleanField("namedLocation", $cells, $headers, "plants");        
@@ -842,21 +839,15 @@ function parseStationsAndPlants(){
     fclose($fhandle);
     
     $fhandle = fopen("./data/phe_perindividualperyear.csv", 'r');
-    //$data = file_get_contents("./data/phe_perindividualperyear.csv");
-    
-    //$rows = explode("\n", $data);
 
-    //$headers = explode(",",array_shift($rows));
+
     $headers = explode(",",fgets($fhandle));
     for($i=0;$i<count($headers);$i++){
         $headers[$i] = str_replace("\"", "", $headers[$i]);
     }
 
     while(!feof($fhandle)){
-    //foreach($rows as $row){
-        $cells = explode(",",fgets($fhandle));
-//        $cells = explode(",", $row);
-        
+        $cells = explode(",",fgets($fhandle));        
         if(count($cells) == 0) continue;
         
         $patch = findAndCleanField("patchOrIndividual", $cells, $headers, "updates");       
@@ -1290,10 +1281,7 @@ class Station{
     }
     
     function deriveSpeciesSeqNum(&$mysql, &$log){
-        
-        
-        
-        
+
         try{
             $query = "SELECT MAX(Seq_Num) `seq` FROM usanpn2.Station_Species_Individual WHERE Station_ID = " . $this->getNpn_id();
             $results = $mysql->getResults($query);
