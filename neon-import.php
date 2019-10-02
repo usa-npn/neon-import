@@ -953,7 +953,8 @@ function findNPNSpeciesID($usda_symbol, $recurse=false){
                 "CARUD" => "CARU3",
                 "GEROT" => "GERO2",
                 "QUMO4" => "QUPR2",
-                "CAHAF" => "OEHA3"
+                "CAHAF" => "OEHA3",
+                "BEGL/BENA" => "BENA"
             );
             
             if(array_key_exists($usda_symbol, $usda_map)){
