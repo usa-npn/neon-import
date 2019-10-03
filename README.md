@@ -1,0 +1,63 @@
+# Introduction
+
+The purpose of this project is to regularly download all data housed by NEON relating to phenology and load that into the internal USA-NPN database. This is facilitated through a few pieces. First, the data is downloaded using the R library provided by NEON directly. There's a separate PHP script that extracts and transforms that data for the NPN's database. There's a bash script that coordinates these activities. The script has parameters for running once, as the initial load, but also should work in the long run for continued operations by allowing existing records to be updating and detecting new records to be inserted into the database.
+
+# Install
+
+This project requires NEON's R package for downloading and stacking files to function properly. Therefore make sure that the package is already installed in the R environment where this project will be running.
+
+```
+install.packages("neonUtilities")
+```
+
+Next, this project can be downloaded the standard way
+
+```
+git clone https://github.com/usa-npn/neon-import
+```
+
+It's also helpful to setup a few directories that should be created when the script runs but might not if there are any permission issues. From the working directory:
+
+```
+mkdir data
+mkdir R/data-files
+mkdir R/stacked-files
+```
+
+You must also setup the config file.
+
+```
+mv config.ini.template config.ini
+vi config.ini
+```
+
+Now populate the file with all the appropriate parameters. By default there's also a number of constants in the PHP script that may need to be changed.
+
+```
+define('DEBUG',1);
+```
+If set to 1 this won't actually commit any of the SQL transactions.
+
+```
+define('IS_INITIAL_RUN',1);
+```
+This will help speed things up if set to 1 during the initial run. But it's not appropriate to keep this on after the first load of data has successfully completed.
+
+
+One major dependency for this project is having the NPN databsae available, and while it's safe to assume that most users of this file will be internal, there's changes to the database that need to be done to prep it for this script. Namely, this file must be executed against the database to create some the dependent entities:
+https://github.com/usa-npn/dbvc/blob/master/usanpn2/updates/20190719-add-neon-dataset-id.sql
+
+ 
+
+
+
+# Usage
+
+There's a shell script that will run a script to use NEON's R library to download all their phenology records, move a few files and then kick off the main PHP ETL script.
+
+```
+sh load-neon.sh
+```
+
+That's all there is to it. If there's a problem there's two log files which can be checked later, output.txt and run.txt.
+
