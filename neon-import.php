@@ -19,12 +19,15 @@ define('DEBUG',1);
 define('EMPTY_SESSION_ID', -1);
 define('NEON_MASTER_SITE_OWNER_ID', -5);
 define('IS_INITIAL_RUN',1);
+define('GOOGLE_API_KEY',$params['google_api_key']);
 
 
 
 //Not to be confused this isn't a flag, the actual ID for square meters
 //in the usanpn2.Units table is 1
 define('SQUARE_METERS_DB_ID',1);
+
+
 
 try{
     $mysql = new Database("mysql",
@@ -37,7 +40,7 @@ try{
             );
     
     
-    $mysql->beginTransaction();
+    
 
 
 }catch(Exception $ex){
@@ -49,18 +52,12 @@ try{
 
 
 try{
-    
-    
 
     parseStationsAndPlants();
     parseObservations();
     logImport();
     
-    if(DEBUG){
-        $mysql->rollback();
-    }else{
-        $mysql->commit();
-    }
+
     
 }catch(Exception $ex){
     $log->write("Unexpected error.");
@@ -69,6 +66,16 @@ try{
     $mysql->rollback();    
 }
 
+
+function transactionComplete(){
+    global $mysql;
+    
+    if(DEBUG){
+        $mysql->rollback();
+    }else{
+        $mysql->commit();
+    }    
+}
 
 function logImport(){
     $fhandle = fopen("last_execute.txt",'w+');    
@@ -129,7 +136,7 @@ function observationExists($plant_id, $date, $observer_id, $phenophase_id){
     $date =  $dateObj->format("Y-m-d");
     $existing_obs_id = null;
     
-    $query = "SELECT Observation_ID FROM usanpn2.tmp_Observation  " .
+    $query = "SELECT Observation_ID FROM usanpn2.Observation  " .
             "WHERE Individual_ID = " . $plant_id . " " .
             "AND Observation_Date = '" . $date . "' " .
             "AND Observer_ID = " . $observer_id . " " .
@@ -173,10 +180,10 @@ function parseObservations(){
     }
         
     while(! feof($fhandle)){
-        
+
         $cells = explode(",", fgets($fhandle));
         if(count($cells) == 0) continue;
-        
+
         $neon_obs_id = findAndCleanField("uid", $cells, $headers, "observations");
         
         $edited_date = findAndCleanField("editedDate", $cells, $headers, "observations");
@@ -191,6 +198,7 @@ function parseObservations(){
             continue;
         }        
         
+        $mysql->beginTransaction();
         
         $plant_id = findAndCleanField("individualID", $cells, $headers, "observations");   
         $plant_in_plants_array = array_key_exists($plant_id, $plants);
@@ -203,6 +211,7 @@ function parseObservations(){
 
         if(!$the_plant){
             $log->write("Tried to update/insert observation but could not find plant: " . $plant_id);
+            transactionComplete();
             continue;
         }
 
@@ -214,6 +223,7 @@ function parseObservations(){
         
         if(isIgnoredPhenophase($the_plant, $phenophase_name)){
             $log->write("Skipping record. Found a non-applicable species/phenophase.");
+            transactionComplete();
             continue;
         }
         
@@ -265,6 +275,7 @@ function parseObservations(){
         }else if($status && $status == "uncertain"){
             $status = -1;
         }else{
+            transactionComplete();
             continue;
         }       
         
@@ -309,7 +320,7 @@ function parseObservations(){
 
                 try{
 
-                    $query = "UPDATE usanpn2.tmp_Observation SET " .
+                    $query = "UPDATE usanpn2.Observation SET " .
                             "Observation_Extent = " . $status . ", " . 
                             "Comment = '" . $comments . "', " .
                             "Abundance_Category_Value = " . $intensity_id . " " . 
@@ -321,7 +332,8 @@ function parseObservations(){
                     $log->write("Failed to update existing observation record.");
                     $log->write(print_r($ex,true));
                 }
-
+                
+                transactionComplete();
                 continue;
             }
         }
@@ -329,7 +341,7 @@ function parseObservations(){
         
 
         
-        $query = "INSERT INTO usanpn2.tmp_Observation (Observer_ID, Submission_ID, Phenophase_ID, Observation_Extent, `Comment`, Individual_ID, "
+        $query = "INSERT INTO usanpn2.Observation (Observer_ID, Submission_ID, Phenophase_ID, Observation_Extent, `Comment`, Individual_ID, "
                 . "Observation_Group_ID, Protocol_ID, Abundance_Category, Abundance_Category_Value, Observation_Date, Deleted) VALUES (" .
                 $observer_id . ", " .
                 $submission_id . ", " .
@@ -348,8 +360,10 @@ function parseObservations(){
         $obs_id = $mysql->getId();
         
         
-        $query = "INSERT INTO usanpn2.tmp_Dataset_Observation (Dataset_ID, Observation_ID) VALUES (" . $neon_dataset_id . ", " . $obs_id . ")";
+        $query = "INSERT INTO usanpn2.Dataset_Observation (Dataset_ID, Observation_ID) VALUES (" . $neon_dataset_id . ", " . $obs_id . ")";
         $mysql->runQuery($query);
+        
+        transactionComplete();
         
         
     }
@@ -435,8 +449,8 @@ function resolveSubmission($plant, $date, $npn_observer_id, $edited_user_id, $ed
             throw new Exception("Could not resolve obs group because plant was not found in db.");
         }
         
-        $query = "SELECT Submission.Submission_ID FROM usanpn2.tmp_Submission `Submission`
-                    LEFT JOIN usanpn2.tmp_Observation `Observation`
+        $query = "SELECT Submission.Submission_ID FROM usanpn2.Submission `Submission`
+                    LEFT JOIN usanpn2.Observation `Observation`
                     ON Observation.Submission_ID = Submission.Submission_ID
                     LEFT JOIN Station_Species_Individual
                     ON Station_Species_Individual.Individual_ID = Observation.Individual_ID
@@ -451,7 +465,7 @@ function resolveSubmission($plant, $date, $npn_observer_id, $edited_user_id, $ed
         }
 
         if(!$submission_id){
-            $query = "INSERT INTO usanpn2.tmp_Submission (Session_ID, Submission_DateTime, Create_Person_ID, Update_DateTime, Update_Person_ID) VALUES (" .
+            $query = "INSERT INTO usanpn2.Submission (Session_ID, Submission_DateTime, Create_Person_ID, Update_DateTime, Update_Person_ID) VALUES (" .
                     EMPTY_SESSION_ID . ", " .
                     "'" . $date . "', " .
                     $npn_observer_id . ", " . 
@@ -500,7 +514,7 @@ function resolveObservationGroup($plant, $date, $observer_id){
             throw new Exception("Could not resolve obs group because plant was not found in db.");
         }
         
-        $query = "SELECT Observation_Group_ID FROM tmp_Observation_Group "
+        $query = "SELECT Observation_Group_ID FROM Observation_Group "
                 . "WHERE Observer_ID = " . $observer_id . " "
                 . "AND Station_ID = " . $station_id . " "
                 . "AND Observation_Group_Date = '" . $date . "'";
@@ -512,7 +526,7 @@ function resolveObservationGroup($plant, $date, $observer_id){
         }
 
         if(!$obs_group_id){
-            $query = "INSERT INTO usanpn2.tmp_Observation_Group (Observation_Group_Date, Observer_ID, Station_ID) VALUES ("
+            $query = "INSERT INTO usanpn2.Observation_Group (Observation_Group_Date, Observer_ID, Station_ID) VALUES ("
                     . "'" . $date . "', "
                     . $observer_id . ", "
                     . $station_id .
@@ -746,6 +760,8 @@ function parseStationsAndPlants(){
         $cells = explode(",",fgets($fhandle));
         if(count($cells) == 0) continue;
         
+        $mysql->beginTransaction();
+        
         $station_name = findAndCleanField("namedLocation", $cells, $headers, "plants");        
         $station_subtype = findAndCleanField("subtypeSpecification", $cells, $headers, "plants");
         $station_name = $station_name . " - " . $station_subtype;               
@@ -797,6 +813,7 @@ function parseStationsAndPlants(){
             
             if($the_plant){
                 $plants[$plant_name] = $the_plant;
+                transactionComplete();
                 continue;
             }
             
@@ -833,6 +850,8 @@ function parseStationsAndPlants(){
         }else{
             $log->write("Found a redundant plant: " . $plant_name . "\n");
         }
+        
+        transactionComplete();
 
     }
     
@@ -850,6 +869,7 @@ function parseStationsAndPlants(){
         $cells = explode(",",fgets($fhandle));        
         if(count($cells) == 0) continue;
         
+        
         $patch = findAndCleanField("patchOrIndividual", $cells, $headers, "updates");       
         $plant_id = findAndCleanField("individualID", $cells, $headers, "updates");
 
@@ -859,7 +879,7 @@ function parseStationsAndPlants(){
             continue;
         }
 
-        
+        $mysql->beginTransaction();
         
         if( ($patch && $patch == "Patch") && $the_plant->getPatch() != 1 ){
 
@@ -876,6 +896,8 @@ function parseStationsAndPlants(){
             
             $the_plant->updatePatchStatus($mysql, $log);
         }
+        
+        transactionComplete();
     }
     
     fclose($fhandle);
@@ -1236,6 +1258,8 @@ class Station{
     private $elevationSource;
     private $latLongSource;
     private $active;
+	
+	private $state;
     
     private $elevationUser;
     private $elevationCalc;
@@ -1304,6 +1328,10 @@ class Station{
 
     function getLongitude() {
         return $this->longitude;
+    }
+	
+    function getState(){
+        return $this->state;
     }
 
     function getElevation() {
@@ -1394,6 +1422,10 @@ class Station{
 
     function getShortLongitude() {
         return $this->shortLongitude;
+    }
+	
+    function setState($state){
+        $this->state = $state;
     }
 
     function setNeonID($neonID) {
@@ -1488,6 +1520,7 @@ class Station{
         
         if($this->longitude != null && !$this->getGMTDifference()){
             $this->generateGMT();
+            $this->generateStateCode();
         }
     }
 
@@ -1498,6 +1531,7 @@ class Station{
         
         if($this->latitude != null  && !$this->getGMTDifference()){
             $this->generateGMT();
+            $this->generateStateCode();
         }
     }
 
@@ -1531,11 +1565,42 @@ class Station{
         $this->setGMTDifference($gmt);      
         return $gmt;
     }
+	
+    function generateStateCode(){
+        $state = null;
+
+        if(!DEBUG){
+            $curl = curl_init();
+            curl_setopt_array($curl, [
+                CURLOPT_RETURNTRANSFER => 1,
+                CURLOPT_URL => 'https://maps.googleapis.com/maps/api/geocode/json?key=' . GOOGLE_API_KEY . '&latlng=' . $this->getLatitude() . "," . $this->getLongitude()
+            ]);
+
+            $result = curl_exec($curl);
+            sleep(1);			
+            $data = json_decode($result);
+            $components = $data->results[0]->address_components;
+
+            foreach($components as $component){
+                if($component->types[0] == "administrative_area_level_1"){
+                    $state = $component->short_name;
+                    break;
+                }
+            }			
+
+        }else{
+            $state = "";
+        }
+
+        $this->setState($state);
+
+        return $state;
+    }
     
     function insert(&$mysql, &$log){
         
         $status = false;
-        $query = "INSERT INTO usanpn2.Station (Observer_ID, Station_Name, Latitude, Longitude, Lat_Lon_Datum, Elevation_m, Comment, Country," .
+        $query = "INSERT INTO usanpn2.Station (Observer_ID, Station_Name, Latitude, Longitude, State, Lat_Lon_Datum, Elevation_m, Comment, Country," .
                 "Elevation_Source, Lat_Lon_Source, Active, Elevation_User_m, Elevation_Calc_m, Elevation_Calc_Source, Latitude_User, Longitude_User," .
                 "Load_Key, Create_Date, Public, GMT_Difference, Short_Latitude, Short_Longitude) VALUES (" .
                 
@@ -1543,6 +1608,7 @@ class Station{
                 "'" . $this->name . "', " .
                 $this->getLatitude() . ", " .
                 $this->getLongitude() . ", " .
+		"'" . $this->getState() . "', " .
                 "'" . $this->getLatLongDatum() . "', " .
                 $this->getElevation() . ", " .
                 "'" . $this->getComment() . "', " .
