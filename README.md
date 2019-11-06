@@ -16,6 +16,12 @@ Next, this project can be downloaded the standard way
 git clone https://github.com/usa-npn/neon-import
 ```
 
+Additionally this program depends on the PHPMailer package which is available separately on GitHub. It's not checked into the project directly so that it can be kept up-to-date more easily with the source repo. Really this should be setup with composer, but alas, it is not. From the main directory of the NEON import program:
+
+```
+git clone https://github.com/PHPMailer/PHPMailer
+```
+
 It's also helpful to setup a few directories that should be created when the script runs but might not if there are any permission issues. From the working directory:
 
 ```

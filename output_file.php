@@ -45,5 +45,10 @@ class OutputFile{
     public function close(){
         fclose($this->handle);
     }
+    
+    public function logError($msg, $date="n/a", $individual_name="n/a", $species="n/a", $growth_form="n/a", $phenophase="n/a"){
+        $this->write("\"Error:" . $msg . "\"," . $date . "," . $individual_name . "," . $species . "," . $growth_form . "," . $phenophase);        
+    }    
+    
 }
 ?>

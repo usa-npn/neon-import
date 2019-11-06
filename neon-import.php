@@ -1,25 +1,40 @@
 <?php
 print "Running neon import";
+
+use PHPMailer\PHPMailer\PHPMailer;
+use PHPMailer\PHPMailer\Exception;
 require_once('output_file.php');
 require_once('database.php');
+require 'PHPMailer/src/Exception.php';
+require 'PHPMailer/src/PHPMailer.php';
+require 'PHPMailer/src/SMTP.php';
+
 global $mysql;
-global $log;
+global $error_log;
+global $sql_log;
 global $stations;
 global $plants;
 global $indicies;
 
 $stations = array();
 $plants = array();
-$log = new OutputFile(__DIR__ . "/output.txt");
+$error_log = new OutputFile(__DIR__ . "/errors.csv");
+$error_log->logError("Message", "Date", "Plant ID/Name", "Species", "Growth Form","Phenophase");
+$sql_log = new OutputFile(__DIR__ . "/sql.txt");
 $indicies = array("observations" => array(), "plants" => array(), "updates" => array());
 
 $mysql = null;
 $params = parse_ini_file(__DIR__ . '/config.ini');
-define('DEBUG',1);
+define('DEBUG',$params['debug']);
 define('EMPTY_SESSION_ID', -1);
 define('NEON_MASTER_SITE_OWNER_ID', -5);
-define('IS_INITIAL_RUN',1);
+define('IS_INITIAL_RUN',$params['is_initial_run']);
+define('NEON_NETWORK_ID',77);
 define('GOOGLE_API_KEY',$params['google_api_key']);
+define('SEND_EMAIL',$params['send_email']);
+define('EMAIL_FROM_ADDRESS', $params['email_from_address']);
+define('EMAIL_FROM_NAME',$params['email_from_name']);
+define('EMAIL_TO_ADDRESS',$params['email_to_address']);
 
 
 
@@ -36,16 +51,16 @@ try{
             $params['mysql_pw'],
             $params['mysql_db'],
             $params['mysql_port'], 
-            $log
+            $sql_log
             );
     
     
     
 
 
-}catch(Exception $ex){
-    $log->write("There was an error establishing database connections. Terminating job.");
-    $log->write(print_r($ex, true));
+}catch(PDOException $ex){
+    $error_log->logError("There was an error establishing database connections. Terminating job." . print_r($ex, true));
+    exitProgram();
     die();
 }
 
@@ -56,14 +71,12 @@ try{
     parseStationsAndPlants();
     parseObservations();
     logImport();
-    
 
-    
 }catch(Exception $ex){
-    $log->write("Unexpected error.");
-    $log->write(print_r($ex, true));
-    
+    $error_log->logError("Unexpected error." . print_r($ex, true));    
     $mysql->rollback();    
+}finally{
+    exitProgram();
 }
 
 
@@ -91,6 +104,26 @@ function getPreviousImportTime(){
     }
     return ((int)$previous_time);    
 }
+
+
+function exitProgram(){
+    if(SEND_EMAIL){
+        $email = new PHPMailer();
+        $email->SetFrom(EMAIL_FROM_ADDRESS, EMAIL_FROM_NAME); //Name is optional
+        $email->Subject   = 'NEON Import Script Complete';
+        $email->Body      = "The NEON script has finished running. Please see the attached file for any errors.";
+        $email->AddAddress( EMAIL_TO_ADDRESS );
+
+        $file_to_attach = 'errors.csv';
+
+        $email->AddAttachment( $file_to_attach , 'neon_errors.txt' );
+
+        return $email->Send(); 
+    }
+    
+}
+
+
 
 
 
@@ -155,8 +188,9 @@ function observationExists($plant_id, $date, $observer_id, $phenophase_id){
 
 
 function parseObservations(){
-    global $log;
+    global $error_log;
     global $mysql;
+    global $mysql_log;
     
 
     global $plants;    
@@ -182,7 +216,7 @@ function parseObservations(){
     while(! feof($fhandle)){
 
         $cells = explode(",", fgets($fhandle));
-        if(count($cells) == 0) continue;
+        if(count($cells) == 0){continue;}
 
         $neon_obs_id = findAndCleanField("uid", $cells, $headers, "observations");
         
@@ -194,7 +228,7 @@ function parseObservations(){
          * it can be skipped completely.
          */
         if($edited_date->getTimestamp() < $previous_time){
-            $log->write("Timestamp older than last import date. Skipping. NEON ID: " . $neon_obs_id);
+            $mysql_log->logError("Timestamp older than last import date. Skipping. NEON ID: " . $neon_obs_id);
             continue;
         }        
         
@@ -210,7 +244,7 @@ function parseObservations(){
         }
 
         if(!$the_plant){
-            $log->write("Tried to update/insert observation but could not find plant: " . $plant_id);
+            $error_log->logError("Tried to update/insert observation but could not find plant.",$edited_date,$plant_id);
             transactionComplete();
             continue;
         }
@@ -222,7 +256,7 @@ function parseObservations(){
         $phenophase_name = findAndCleanField("phenophaseName", $cells, $headers, "observations");
         
         if(isIgnoredPhenophase($the_plant, $phenophase_name)){
-            $log->write("Skipping record. Found a non-applicable species/phenophase.");
+            $error_log->logError("Skipping record. Found a non-applicable species/phenophase.",$date,$plant_id,$the_plant->usdaSymbol,$the_plant->getGrowthForm(),$phenophase_name);
             transactionComplete();
             continue;
         }
@@ -248,16 +282,14 @@ function parseObservations(){
         $observation_group_id = resolveObservationGroup($the_plant, $date, $observer_id);
         
         if(!$observation_group_id){
-            $log->write("Error inserting record; unable to resolve obs group id");
-            $log->write($row);
+            $error_log->logError("Error inserting record; unable to resolve obs group id: " . $row,$date,$plant_id,$the_plant->usdaSymbol,$the_plant->getGrowthForm(),$phenophase_name);
         }
         
         $submission_id = resolveSubmission($the_plant, $date, $observer_id, $submitted_person_id, $edited_date->format("Y-m-d"));
 
         
         if(!$submission_id){
-            $log->write("Error inserting record; unable to resolve submission id");
-            $log->write($row);
+            $error_log->logError("Error inserting record; unable to resolve submission id: " . $row,$date,$plant_id,$the_plant->usdaSymbol,$the_plant->getGrowthForm(),$phenophase_name);
         }        
         
        
@@ -282,7 +314,7 @@ function parseObservations(){
 
         
         if($intensity_amount && !empty($intensity_amount)){
-            $intensity_data = getNPNIntensityData($phenophase_id, $intensity_amount, $the_plant, $date, $intensity_amount, $neon_obs_id);
+            $intensity_data = getNPNIntensityData($phenophase_id, $intensity_amount, $the_plant, $date, $neon_obs_id);
             $abundace_category = $intensity_data[1];
             $intensity_id = $intensity_data[0];
         }else{
@@ -316,7 +348,7 @@ function parseObservations(){
 
             if($existing_obs_id){
 
-                $log->write("Found existing observation, with updated timestamp. Attempting update. NEON ID: " . $neon_obs_id);
+                $mysql_log->write("Found existing observation, with updated timestamp. Attempting update. NEON ID: " . $neon_obs_id);
 
                 try{
 
@@ -329,8 +361,7 @@ function parseObservations(){
                     $mysql->runQuery($query);
 
                 }catch(Exception $ex){
-                    $log->write("Failed to update existing observation record.");
-                    $log->write(print_r($ex,true));
+                    $error_log->logError("Failed to update existing observation record." . $ex->getMessage() . " ", $date,$plant_id,$the_plant->getUSDASymbol(),$the_plant->getGrowthForm(),$phenophase_name);
                 }
                 
                 transactionComplete();
@@ -377,7 +408,7 @@ function resolvePersonID($neon_person_id){
     
 
     global $mysql;
-    global $log;
+    global $error_log;
     
     $npn_person_id = null;
     
@@ -418,8 +449,7 @@ function resolvePersonID($neon_person_id){
         }
         
     } catch (Exception $ex) {
-        $log->write("There was a problem resolving person id.");
-        $log->write(print_r($ex, true));
+        $error_log->logError("There was a problem resolving person id." . $ex->getMessage() );
         $npn_person_id = null;
 
     }
@@ -431,7 +461,7 @@ function resolvePersonID($neon_person_id){
 function resolveSubmission($plant, $date, $npn_observer_id, $edited_user_id, $edited_date){
     
     global $mysql;
-    global $log;
+    global $error_log;
     
     $station_id = null;
     $submission_id = null;
@@ -484,8 +514,7 @@ function resolveSubmission($plant, $date, $npn_observer_id, $edited_user_id, $ed
         
                 
     } catch (Exception $ex) {
-        $log->write("Error resolving Submission.");
-        $log->write(print_r($ex,true));
+        $error_log->logError("Error resolving Submission." . $ex->getMessage(), $date);
         $submission_id = null;        
     }
     
@@ -496,7 +525,7 @@ function resolveSubmission($plant, $date, $npn_observer_id, $edited_user_id, $ed
 function resolveObservationGroup($plant, $date, $observer_id){
     
     global $mysql;
-    global $log;    
+    global $error_log;
     
     $station_id = null;
     $obs_group_id = null;
@@ -541,8 +570,7 @@ function resolveObservationGroup($plant, $date, $observer_id){
         }
         
     } catch (Exception $ex) {
-        $log->write("Error resolving observation group.");
-        $log->write(print_r($ex,true));
+        $error_log->logError("Error resolving observation group." . $ex->getMessage(), $date);
         $obs_group_id = null;
     }
     
@@ -553,7 +581,7 @@ function resolveObservationGroup($plant, $date, $observer_id){
 
 function getNPNIntensityData($phenophase_id, $intensity_amount, $the_plant, $date, $neon_obs_id){
     global $mysql;
-    global $log;
+    global $error_log;
     
     $intensity_id = null;
     $category_id = null;
@@ -655,8 +683,9 @@ function getNPNIntensityData($phenophase_id, $intensity_amount, $the_plant, $dat
         
         
     } catch (Exception $ex) {
-        $log->write("Error finding an intensity ID for: " . $phenophase_id . "; Intensity Amount: " . $intensity_amount . "; Species_ID: " . $the_plant->getSpeciesID() .";date: " . $date . "; NEON ID: " . $neon_obs_id . "; Plant Name: " . $the_plant->getName());
-        $log->write(print_r($ex, true));        
+        $error_log->logError("Error finding an intensity ID. Intensity Amount: " . $intensity_amount . "; NEON ID: " . $neon_obs_id . "; " . $ex->getMessage(), 
+                $date, $the_plant->getName(), $the_plant->getUSDASymbol(),$the_plant->getGrowthForm(),$phenophase_id
+                );
     }
     
     return array($intensity_id, $category_id);
@@ -666,7 +695,7 @@ function getNPNIntensityData($phenophase_id, $intensity_amount, $the_plant, $dat
 function getNPNPhenophaseAndProtocolID($phenophase_name, $the_plant, $date, $neon_obs_id){
 
     global $mysql;
-    global $log;
+    global $error_log;
     
     $phenophase_id = null;
     $protocol_id = null;
@@ -731,9 +760,8 @@ function getNPNPhenophaseAndProtocolID($phenophase_name, $the_plant, $date, $neo
             throw new Exception("Unable to find suitable protocol id. NEON Record ID: " . $neon_obs_id);
         }        
         
-    }catch(Exception $ex){
-        $log->write("Error finding a phenophase/protocol for: " . $phenophase_name . "; Species_ID: " . $the_plant->getSpeciesID() .";date: " . $date . "; NEON ID: " . $neon_obs_id . "; Plant ID: " . $the_plant->getName());
-        $log->write(print_r($ex, true));
+    }catch(Exception $ex){        
+        $error_log->logError("Error finding a phenophase/protocol.", $date, $the_plant->getName(),$the_plant->getUSDASymbol(), $the_plant->getGrowthForm(),$phenophase_name);
     }
     
     return array($phenophase_id, $protocol_id);
@@ -747,7 +775,7 @@ function parseStationsAndPlants(){
     global $stations;
     global $plants;
     global $mysql;    
-    global $log;
+    global $error_log;
     
 
     $fhandle = fopen("./data/phe_perindividual.csv", 'r');
@@ -758,12 +786,13 @@ function parseStationsAndPlants(){
     }
     while(! feof($fhandle)){
         $cells = explode(",",fgets($fhandle));
-        if(count($cells) == 0) continue;
+        if(count($cells) == 0){continue;}
         
         $mysql->beginTransaction();
         
         $station_name = findAndCleanField("namedLocation", $cells, $headers, "plants");        
         $station_subtype = findAndCleanField("subtypeSpecification", $cells, $headers, "plants");
+        
         $station_name = $station_name . " - " . $station_subtype;               
         
         $the_station = null;
@@ -789,14 +818,12 @@ function parseStationsAndPlants(){
                     $the_station->setLongitude(findAndCleanField("decimalLongitude", $cells, $headers, "plants"));
                     $the_station->setElevation(findAndCleanField("elevation", $cells, $headers, "plants"));
                 }catch(Exception $ex){
-
-                    $log->write("Error initiating station: " . $station_name);
-                    $log->write(print_r($ex,true));
+                    
+                    $error_log->logError("Error initiating station: " . $station_name . " " . $ex->getMessage() );
 
                 }
 
-                $the_station->insert($mysql, $log);
-
+                $the_station->insert($mysql, $error_log);
                 $stations[$station_name] = $the_station;
             }
             
@@ -806,12 +833,16 @@ function parseStationsAndPlants(){
         
         
         $plant_name = findAndCleanField("individualID", $cells, $headers, "plants");
+        $growth_form = findAndCleanField("growthForm", $cells, $headers, "plants");
+        $usda_symbol = findAndCleanField("taxonID", $cells, $headers, "plants");
         
         if(!array_key_exists($plant_name, $plants)){
             
             $the_plant = plantExists($plant_name);
             
+            
             if($the_plant){
+                $the_plant->setGrowthForm($growth_form);
                 $plants[$plant_name] = $the_plant;
                 transactionComplete();
                 continue;
@@ -830,25 +861,27 @@ function parseStationsAndPlants(){
             $the_plant->setStationID($the_station->getNpn_id());
             
             $the_plant->setName(findAndCleanField("individualID", $cells, $headers, "plants"));
-            $the_plant->setUSDASymbol(findAndCleanField("taxonID", $cells, $headers, "plants"));
+            $the_plant->setUSDASymbol($usda_symbol);
 
             $the_plant->setSeqNum($the_station->getSpeciesSeqNum());
             $the_station->setSpeciesSeqNum($the_station->getSpeciesSeqNum()+1);
             $the_plant->setCreateDate(new DateTime());
             $the_plant->setComment($plant_comment);
             
+            $the_plant->setGrowthForm($growth_form);
+            
             $species_id = findNPNSpeciesID(findAndCleanField("taxonID", $cells, $headers, "plants"));
             if($species_id){
                 $the_plant->setSpeciesID($species_id);            
-                $the_plant->insert($mysql, $log);
+                $the_plant->insert($mysql, $error_log);
             }else{
                 $the_plant = null;
             }
             
             $plants[$plant_name] = $the_plant;
             
-        }else{
-            $log->write("Found a redundant plant: " . $plant_name . "\n");
+        }else{            
+            $error_log->logError("Found a redundant plant", null, $plant_name, $usda_symbol, $growth_form);
         }
         
         transactionComplete();
@@ -867,7 +900,7 @@ function parseStationsAndPlants(){
 
     while(!feof($fhandle)){
         $cells = explode(",",fgets($fhandle));        
-        if(count($cells) == 0) continue;
+        if(count($cells) == 0){continue;}
         
         
         $patch = findAndCleanField("patchOrIndividual", $cells, $headers, "updates");       
@@ -875,7 +908,7 @@ function parseStationsAndPlants(){
 
         $the_plant = (array_key_exists($plant_id, $plants)) ? $plants[$plant_id] : null;
         if(!$the_plant){
-            $log->write("Tried to update patch status for plant but plant ID not found in perindividual file: " . $plant_id);
+            $error_log->logError("Tried to update patch status for plant but plant ID not found in perindividual file", null, $plant_id);
             continue;
         }
 
@@ -943,7 +976,7 @@ function isIgnoredPhenophase($plant, $phenophase_name){
 
 function findNPNSpeciesID($usda_symbol, $recurse=false){
     global $mysql;
-    global $log;
+    global $error_log;
     
     try{
         $query = "SELECT * FROM usanpn2.Species WHERE USDA_Symbol = '" . $usda_symbol . "'";
@@ -990,7 +1023,7 @@ function findNPNSpeciesID($usda_symbol, $recurse=false){
         }
         
     }catch(Exception $ex){
-        $log->write("Error: Could not find a species from NEON data: " . $usda_symbol);
+        $error_log->write("Error: Could not find a species from NEON data: " . $usda_symbol);
     }
     
     return $species_id;
@@ -1000,6 +1033,8 @@ function findNPNSpeciesID($usda_symbol, $recurse=false){
 
 function stationExists($name){
     global $mysql;
+    global $error_log;
+    
     
     $query = "SELECT * FROM usanpn2.Station WHERE Station_Name = '" . $name . "'";
     $results = $mysql->getResults($query);
@@ -1010,7 +1045,7 @@ function stationExists($name){
         $station->setLatitude($row['Latitude']);
         $station->setLongitude($row['Longitude']);
         $station->setElevation($row['Elevation_m']);        
-        $station->deriveSpeciesSeqNum($mysql, $log);
+        $station->deriveSpeciesSeqNum($mysql, $error_log);
         $station->setLoadKey($row['Load_Key']);
     }
     
@@ -1064,6 +1099,7 @@ class Individual{
     public $patchSize;
     public $patchSizeUnitsID;
     public $comment;
+    public $growthForm;
     
     public function __construct(){
         $this->active = 1;
@@ -1116,6 +1152,10 @@ class Individual{
     function getPatchSizeUnitsID() {
         return $this->patchSizeUnitsID;
     }
+    
+    function getGrowthForm(){
+        return $this->growthForm;
+    }
 
     function setStationID($stationID) {
         $this->stationID = $stationID;
@@ -1143,6 +1183,10 @@ class Individual{
 
     function setPatchSizeUnitsID($patchSizeUnitsID) {
         $this->patchSizeUnitsID = $patchSizeUnitsID;
+    }
+    
+    function setGrowthForm($growth_form){
+        $this->growthForm = $growth_form;
     }
 
     
@@ -1188,7 +1232,7 @@ class Individual{
     }
 
         
-    function insert(&$mysql, &$log){
+    function insert(&$mysql, &$error_log){
         
         $status = false;
         
@@ -1208,16 +1252,20 @@ class Individual{
             $status = true;
             $this->setNPNID($mysql->getId());
         }catch(Exception $ex){
-            $log->write("There was a problem creating an individual.");
-            $log->write(print_r($this, true));
-            $log->write(print_r($ex, true));
+            
+            $error_log->logError("There was a problem creating an individual. " . $ex->getMessage(),
+                    null,
+                    $this->getName(),
+                    $this->getUSDASymbol(),
+                    $this->getGrowthForm(),
+                    null);
         }
         
         return $status;
                 
     }
     
-    function updatePatchStatus(&$mysql, &$log){
+    function updatePatchStatus(&$mysql, &$error_log){
         $status = false;
         
         try{
@@ -1230,9 +1278,11 @@ class Individual{
             $mysql->runQuery($query);
             $status = true;
         }catch(Exception $ex){
-            $log->write("There was a problem creating an individual.");
-            $log->write(print_r($this, true));
-            $log->write(print_r($ex, true));
+            $error_log->logError("There was a problem updating an individual." . $ex->getMessage(),
+                    null,
+                    $this->getName(),
+                    $this->getUSDASymbol(),
+                    $this->getGrowthForm());
         }
         
         return $status;        
@@ -1304,7 +1354,7 @@ class Station{
         $this->speciesSeqNum = $speciesSeqNum;
     }
     
-    function deriveSpeciesSeqNum(&$mysql, &$log){
+    function deriveSpeciesSeqNum(&$mysql, &$error_log){
 
         try{
             $query = "SELECT MAX(Seq_Num) `seq` FROM usanpn2.Station_Species_Individual WHERE Station_ID = " . $this->getNpn_id();
@@ -1314,7 +1364,7 @@ class Station{
                 $seq_num = intval($row['seq']) + 1;
             }
         }catch(Exception $ex){
-            $log->write("Error finding species seq num: " . $this->getNpn_id() . ' ' . $this->getNeonID());
+            $error_log->write("Error finding species seq num: " . $this->getNpn_id() . ' ' . $this->getName() . " " . $ex->getMessage() );
             $seq_num = 1;
         }
         
@@ -1597,9 +1647,10 @@ class Station{
         return $state;
     }
     
-    function insert(&$mysql, &$log){
+    function insert(&$mysql, &$error_log){
         
-        $status = false;
+        $status_station = false;
+        $status_network_station = false;
         $query = "INSERT INTO usanpn2.Station (Observer_ID, Station_Name, Latitude, Longitude, State, Lat_Lon_Datum, Elevation_m, Comment, Country," .
                 "Elevation_Source, Lat_Lon_Source, Active, Elevation_User_m, Elevation_Calc_m, Elevation_Calc_Source, Latitude_User, Longitude_User," .
                 "Load_Key, Create_Date, Public, GMT_Difference, Short_Latitude, Short_Longitude) VALUES (" .
@@ -1629,15 +1680,28 @@ class Station{
                 $this->getShortLongitude() . ")";
         try{
             $mysql->runQuery($query);
-            $status = true;
+            $status_station = true;
             $this->setNpn_id($mysql->getId());
             $this->setSpeciesSeqNum(1);
         }catch(Exception $ex){
-            $log->write("There was a problem inserting station");
-            $log->write(print_r($this, true));
+            $error_log->write("There was a problem inserting station: " . $this->name . " " . $ex->getMessage() );
         }
         
-        return $status;
+        
+        $query = "INSERT INTO usanpn2.Network_Station (Network_ID, Station_ID) VALUES (" .
+                NEON_NETWORK_ID . ", " .
+                $this->getNpn_id() . ")";
+        
+        try{
+            
+            $mysql->runQuery($query);
+            $status_network_station = true;
+            
+        } catch (Exception $ex) {
+            $error_log->write("There was a problem inserting network-station: " . $ex->getMessage());
+        }
+        
+        return ($status_station && $status_network_station);
         
     }
 
