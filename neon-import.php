@@ -193,7 +193,7 @@ function parseObservations(){
     global $mysql_log;
     
 
-    global $plants;    
+    global $plants;   
         
     $fhandle = fopen('./data/phe_statusintensity.csv','r');    
     $neon_dataset_id = null;
