@@ -20,7 +20,7 @@ $stations = array();
 $plants = array();
 $error_log = new OutputFile(__DIR__ . "/errors.csv");
 $error_log->logError("Message", "Date", "Plant ID/Name", "Species", "Growth Form","Phenophase");
-$sql_log = new OutputFile(__DIR__ . "/sql.txt");
+$mysql_log = new OutputFile(__DIR__ . "/sql.txt");
 $indicies = array("observations" => array(), "plants" => array(), "updates" => array());
 
 $mysql = null;
@@ -51,7 +51,7 @@ try{
             $params['mysql_pw'],
             $params['mysql_db'],
             $params['mysql_port'], 
-            $sql_log
+            $mysql_log
             );
     
     
@@ -193,7 +193,7 @@ function parseObservations(){
     global $mysql_log;
     
 
-    global $plants;    
+    global $plants;   
         
     $fhandle = fopen('./data/phe_statusintensity.csv','r');    
     $neon_dataset_id = null;
