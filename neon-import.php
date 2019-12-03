@@ -11,7 +11,7 @@ require 'PHPMailer/src/SMTP.php';
 
 global $mysql;
 global $error_log;
-global $sql_log;
+global $mysql_log;
 global $stations;
 global $plants;
 global $indicies;
@@ -20,7 +20,7 @@ $stations = array();
 $plants = array();
 $error_log = new OutputFile(__DIR__ . "/errors.csv");
 $error_log->logError("Message", "Date", "Plant ID/Name", "Species", "Growth Form","Phenophase");
-$sql_log = new OutputFile(__DIR__ . "/sql.txt");
+$mysql_log = new OutputFile(__DIR__ . "/sql.txt");
 $indicies = array("observations" => array(), "plants" => array(), "updates" => array());
 
 $mysql = null;
@@ -51,7 +51,7 @@ try{
             $params['mysql_pw'],
             $params['mysql_db'],
             $params['mysql_port'], 
-            $sql_log
+            $mysql_log
             );
     
     
@@ -272,7 +272,10 @@ function parseObservations(){
         $protocol_data = getNPNPhenophaseAndProtocolID($phenophase_name, $the_plant, $date, $neon_obs_id);        
         $phenophase_id = $protocol_data[0];
         $protocol_id = $protocol_data[1];        
-       
+        if(!$phenophase_id){
+            transactionComplete();
+            continue;
+        }
         
         $status = findAndCleanField("phenophaseStatus", $cells, $headers, "observations");
                 
@@ -359,12 +362,14 @@ function parseObservations(){
                             "WHERE Observation_ID = " . $existing_obs_id;                
 
                     $mysql->runQuery($query);
+                    
+                    transactionComplete();
 
                 }catch(Exception $ex){
                     $error_log->logError("Failed to update existing observation record." . $ex->getMessage() . " ", $date,$plant_id,$the_plant->getUSDASymbol(),$the_plant->getGrowthForm(),$phenophase_name);
                 }
                 
-                transactionComplete();
+                
                 continue;
             }
         }
