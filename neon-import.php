@@ -35,6 +35,7 @@ define('SEND_EMAIL',$params['send_email']);
 define('EMAIL_FROM_ADDRESS', $params['email_from_address']);
 define('EMAIL_FROM_NAME',$params['email_from_name']);
 define('EMAIL_TO_ADDRESS',$params['email_to_address']);
+define('WEB_HOST',$params['web_host']);
 
 
 
@@ -80,13 +81,28 @@ try{
 }
 
 
-function transactionComplete(){
+function transactionComplete($station=null){
     global $mysql;
     
     if(DEBUG){
         $mysql->rollback();
     }else{
+               
         $mysql->commit();
+        
+        /*
+         * This has to be done here, after the commit, and using a flag because the Caching of modis/daymet
+         * data depends on the station id existing in the database. The services that actually generate that
+         * are handled by the web services and have a separate connection to the database. Therefore they are
+         * not aware of the transaction and won't find the station.
+         * Therefore, we track the station, it's status and then actually search for the MODIS/Daymet data only
+         * after it's saved to the database. The isNew flag is just to be more effecient and not query for the same
+         * station more than once.
+         */
+        if($station && gettype($station) == "object" && get_class ($station) == "Station" && $station->getIsNew()){
+            $station->setIsNew(false);
+            $station->generateDaymetEntries();
+        }        
     }    
 }
 
@@ -786,6 +802,7 @@ function parseStationsAndPlants(){
     $fhandle = fopen("./data/phe_perindividual.csv", 'r');
     
     $headers = explode(",",fgets($fhandle));
+    
     for($i=0;$i<count($headers);$i++){
         $headers[$i] = str_replace("\"", "", $headers[$i]);
     }
@@ -822,6 +839,19 @@ function parseStationsAndPlants(){
                     $the_station->setLatitude(findAndCleanField("decimalLatitude", $cells, $headers, "plants"));
                     $the_station->setLongitude(findAndCleanField("decimalLongitude", $cells, $headers, "plants"));
                     $the_station->setElevation(findAndCleanField("elevation", $cells, $headers, "plants"));
+                    
+                    
+                    // If a station doesn't even have a valid location, it's not valid to store it in our databse
+                    // and we should skip to the next record
+                    // This will also preclude the plant from being added if it's not already in the database but 
+                    // that is fine since there is no valid location for that plant.
+                    
+                    if($the_station->getLatitude() == "" || $the_station->getLatitude() == null ||
+                            $the_station->getLongitude() == "" || $the_station->getLongitude() == null){
+                        
+                        continue;
+                    }
+                    
                 }catch(Exception $ex){
                     
                     $error_log->logError("Error initiating station: " . $station_name . " " . $ex->getMessage() );
@@ -849,7 +879,7 @@ function parseStationsAndPlants(){
             if($the_plant){
                 $the_plant->setGrowthForm($growth_form);
                 $plants[$plant_name] = $the_plant;
-                transactionComplete();
+                transactionComplete($the_station);
                 continue;
             }
             
@@ -889,7 +919,7 @@ function parseStationsAndPlants(){
             $error_log->logError("Found a redundant plant", null, $plant_name, $usda_symbol, $growth_form);
         }
         
-        transactionComplete();
+        transactionComplete($the_station);
 
     }
     
@@ -935,7 +965,7 @@ function parseStationsAndPlants(){
             $the_plant->updatePatchStatus($mysql, $log);
         }
         
-        transactionComplete();
+        transactionComplete($the_station);
     }
     
     fclose($fhandle);
@@ -1053,7 +1083,7 @@ function stationExists($name){
         $station->deriveSpeciesSeqNum($mysql, $error_log);
         $station->setLoadKey($row['Load_Key']);
     }
-    
+    $station=null;
     return $station;
     
 }
@@ -1314,7 +1344,7 @@ class Station{
     private $latLongSource;
     private $active;
 	
-	private $state;
+    private $state;
     
     private $elevationUser;
     private $elevationCalc;
@@ -1336,6 +1366,8 @@ class Station{
     
     private $speciesSeqNum;
     
+    private $isNew;
+    
     
     
     public function __construct(){
@@ -1349,6 +1381,8 @@ class Station{
         $this->observer_id = -1;
         
         $this->createDate = new DateTime();
+        
+        $this->isNew = false;
     }
     
     function getSpeciesSeqNum() {
@@ -1359,6 +1393,15 @@ class Station{
         $this->speciesSeqNum = $speciesSeqNum;
     }
     
+    function getIsNew() {
+        return $this->isNew;
+    }
+
+    function setIsNew($isNew) {
+        $this->isNew = $isNew;
+    }
+
+        
     function deriveSpeciesSeqNum(&$mysql, &$error_log){
 
         try{
@@ -1620,6 +1663,26 @@ class Station{
         $this->setGMTDifference($gmt);      
         return $gmt;
     }
+    
+    function generateDaymetEntries(){
+        if(!DEBUG){
+            $current_year = date("Y");
+            
+            for($year=2008;$year <= $current_year; $year++ ){
+                $url = WEB_HOST . "/npn_portal/stations/getModisForStation.json?station_id=" . $this->getNpn_id() . "&year=" . $year;
+                $curl = curl_init();
+                curl_setopt_array($curl, [
+                    CURLOPT_RETURNTRANSFER => 1,
+                    CURLOPT_URL => $url
+                ]);
+
+                $result = curl_exec($curl);
+                sleep(1);
+            }
+            
+            
+        }
+    }
 	
     function generateStateCode(){
         $state = null;
@@ -1688,6 +1751,7 @@ class Station{
             $status_station = true;
             $this->setNpn_id($mysql->getId());
             $this->setSpeciesSeqNum(1);
+            $this->isNew = true;
         }catch(Exception $ex){
             $error_log->write("There was a problem inserting station: " . $this->name . " " . $ex->getMessage() );
         }
@@ -1705,6 +1769,7 @@ class Station{
         } catch (Exception $ex) {
             $error_log->write("There was a problem inserting network-station: " . $ex->getMessage());
         }
+
         
         return ($status_station && $status_network_station);
         
