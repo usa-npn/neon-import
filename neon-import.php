@@ -848,7 +848,7 @@ function parseStationsAndPlants(){
                     
                     if($the_station->getLatitude() == "" || $the_station->getLatitude() == null ||
                             $the_station->getLongitude() == "" || $the_station->getLongitude() == null){
-                        
+                        transactionComplete($the_station);
                         continue;
                     }
                     
@@ -1082,6 +1082,7 @@ function stationExists($name){
         $station->setElevation($row['Elevation_m']);        
         $station->deriveSpeciesSeqNum($mysql, $error_log);
         $station->setLoadKey($row['Load_Key']);
+        $station->setIsNew(false);
     }
     $station=null;
     return $station;
