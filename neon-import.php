@@ -1679,6 +1679,17 @@ class Station{
 
                 $result = curl_exec($curl);
                 sleep(1);
+                                
+                $url = WEB_HOST . "/npn_portal/stations/getDaymetData.json?station_id=" . $this->getNpn_id() . "&year=" . $year . "&doy=1";
+                $curl = curl_init();
+                curl_setopt_array($curl, [
+                    CURLOPT_RETURNTRANSFER => 1,
+                    CURLOPT_URL => $url
+                ]);
+
+                $result = curl_exec($curl);
+                sleep(1);                
+                
             }
             
             
