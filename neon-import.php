@@ -38,7 +38,6 @@ define('EMAIL_TO_ADDRESS',$params['email_to_address']);
 define('WEB_HOST',$params['web_host']);
 
 
-
 //Not to be confused this isn't a flag, the actual ID for square meters
 //in the usanpn2.Units table is 1
 define('SQUARE_METERS_DB_ID',1);
@@ -128,13 +127,16 @@ function exitProgram(){
         $email->SetFrom(EMAIL_FROM_ADDRESS, EMAIL_FROM_NAME); //Name is optional
         $email->Subject   = 'NEON Import Script Complete';
         $email->Body      = "The NEON script has finished running. Please see the attached file for any errors.";
-        $email->AddAddress( EMAIL_TO_ADDRESS );
 
         $file_to_attach = 'errors.csv';
 
         $email->AddAttachment( $file_to_attach , 'neon_errors.txt' );
 
-        return $email->Send(); 
+        $addresses = explode(",",EMAIL_TO_ADDRESS);
+        foreach($addresses as $address){
+            $email->AddAddress($address);
+        }
+        return $email->Send();
     }
     
 }
