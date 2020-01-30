@@ -16,6 +16,8 @@ global $stations;
 global $plants;
 global $indicies;
 
+
+
 $stations = array();
 $plants = array();
 $error_log = new OutputFile(__DIR__ . "/errors.csv");
@@ -36,6 +38,7 @@ define('EMAIL_FROM_ADDRESS', $params['email_from_address']);
 define('EMAIL_FROM_NAME',$params['email_from_name']);
 define('EMAIL_TO_ADDRESS',$params['email_to_address']);
 define('WEB_HOST',$params['web_host']);
+
 
 
 //Not to be confused this isn't a flag, the actual ID for square meters
@@ -127,16 +130,13 @@ function exitProgram(){
         $email->SetFrom(EMAIL_FROM_ADDRESS, EMAIL_FROM_NAME); //Name is optional
         $email->Subject   = 'NEON Import Script Complete';
         $email->Body      = "The NEON script has finished running. Please see the attached file for any errors.";
+        $email->AddAddress( EMAIL_TO_ADDRESS );
 
         $file_to_attach = 'errors.csv';
 
         $email->AddAttachment( $file_to_attach , 'neon_errors.txt' );
 
-        $addresses = explode(",",EMAIL_TO_ADDRESS);
-        foreach($addresses as $address){
-            $email->AddAddress($address);
-        }
-        return $email->Send();
+        return $email->Send(); 
     }
     
 }
@@ -872,6 +872,8 @@ function parseStationsAndPlants(){
         $plant_name = findAndCleanField("individualID", $cells, $headers, "plants");
         $growth_form = findAndCleanField("growthForm", $cells, $headers, "plants");
         $usda_symbol = findAndCleanField("taxonID", $cells, $headers, "plants");
+        $edited_date = findAndCleanField("editedDate", $cells, $headers, "plants");
+        $edited_date = new DateTime($edited_date);
         
         if(!array_key_exists($plant_name, $plants)){
             
@@ -880,6 +882,21 @@ function parseStationsAndPlants(){
             
             if($the_plant){
                 $the_plant->setGrowthForm($growth_form);
+                
+                // In this case the plant is already in our database so we want
+                // to compare the date in the row/file against the date we "created"
+                // the plant, with the understanding that future updates to the plant
+                // will renew the create date.
+                
+                checkPlantUpdate(
+                        $the_plant,
+                        $edited_date,
+                        new DateTime($the_plant->getCreateDate()), 
+                        $usda_symbol, 
+                        $mysql, 
+                        $error_log
+                );
+                
                 $plants[$plant_name] = $the_plant;
                 transactionComplete($the_station);
                 continue;
@@ -902,7 +919,7 @@ function parseStationsAndPlants(){
 
             $the_plant->setSeqNum($the_station->getSpeciesSeqNum());
             $the_station->setSpeciesSeqNum($the_station->getSpeciesSeqNum()+1);
-            $the_plant->setCreateDate(new DateTime());
+            $the_plant->setCreateDate($edited_date);
             $the_plant->setComment($plant_comment);
             
             $the_plant->setGrowthForm($growth_form);
@@ -917,7 +934,29 @@ function parseStationsAndPlants(){
             
             $plants[$plant_name] = $the_plant;
             
-        }else{            
+        }else{
+            
+            //We need to get a reference to the plant. Could just use array but 
+            //this is easier to read.
+            $the_plant = $plants[$plant_name];
+            
+            $status = checkPlantUpdate(
+                    $the_plant,
+                    $edited_date,
+                    new DateTime($the_plant->getCreateDate()), 
+                    $usda_symbol, 
+                    $mysql, 
+                    $error_log
+            );
+            
+            //If the plant is actually newer, and an update was made to the plant
+            // in the database, make sure that the data in memory is updated as well.
+            // Not sure if this happens implictely / pass-by-reference and all that
+            // but this is a good check to make.
+            
+            if($status){
+                $plants[$plant_name] = $the_plant;
+            }            
             $error_log->logError("Found a redundant plant", null, $plant_name, $usda_symbol, $growth_form);
         }
         
@@ -973,6 +1012,31 @@ function parseStationsAndPlants(){
     fclose($fhandle);
     
     
+}
+
+/**
+ * This function exists because when parsing the perindividual file in the NEON
+ * data there's a good possibility that there's more than one instance of every
+ * individual plant. In some cases the taxon (species) changes so the NPN script
+ * needs to be able to check the date in these cases and make sure that the
+ * editedDate field and make sure the correct species id is associated with each
+ * plant.
+ * 
+ */
+function checkPlantUpdate($the_plant,$new_date,$old_date,$usda_symbol){
+    global $mysql;
+    global $error_log;
+    $status = false;
+    if($new_date > $old_date && Individual::usdaSymbolExists($usda_symbol,$mysql,$error_log) ){
+        $the_plant->setUSDASymbol($usda_symbol);
+        $the_plant->setCreateDate($new_date->format("Y-m-d"));
+        $the_plant->updateUSDASymbol($mysql, $error_log);
+        $status = true;
+        
+    }
+    
+    return $status;
+
 }
 
 
@@ -1153,6 +1217,22 @@ class Individual{
         $this->getSpeciesFromUSDA();
     }
     
+    public static function usdaSymbolExists($usda_symbol){
+        global $mysql;
+        $exists = false;
+        
+        $query = "SELECT Species_ID FROM usanpn2.Species WHERE USDA_Symbol = '" . $usda_symbol . "'";
+        $results = $mysql->getResults($query);
+        while($row = $results->fetch()){
+            if($row && $row['Species_ID'] && $row["Species_ID"] != null && $row["Species_ID"] != ""){
+                $exists = true;
+                break;
+            }
+        }
+        
+        return $exists;
+    }
+    
     public function getSpeciesFromUSDA(){
         global $mysql;
         
@@ -1284,7 +1364,7 @@ class Individual{
                     $this->getActive() . ", " .
                     $this->getSeqNum() . ", " .
                     "'" . $this->getComment() . "', " .
-                    "'" . $this->getCreateDate()->format("Y-m-d") . "')";
+                    "'" . $this->getCreateDate() . "')";
 
             $mysql->runQuery($query);
             $status = true;
@@ -1301,6 +1381,30 @@ class Individual{
         
         return $status;
                 
+    }
+    
+    function updateUSDASymbol(&$mysql, &$error_log){
+        $status = false;
+        
+        try{
+            
+            
+            $query = "UPDATE usanpn2.Station_Species_Individual " .
+                    " SET Create_Date = '" . $this->createDate . "'," .
+                    " Species_ID = " . $this->species_id . 
+                    " WHERE Individual_ID = " . $this->getNPNID();
+
+            $mysql->runQuery($query);
+            $status = true;
+        }catch(Exception $ex){
+            $error_log->logError("There was a problem updating an individual usda symbol." . $ex->getMessage(),
+                    null,
+                    $this->getName(),
+                    $this->getUSDASymbol());
+            $status = false;
+        }
+        
+        return $status;        
     }
     
     function updatePatchStatus(&$mysql, &$error_log){
@@ -1324,7 +1428,7 @@ class Individual{
         }
         
         return $status;        
-    }
+    }    
 
 
 }
