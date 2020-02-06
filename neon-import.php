@@ -931,8 +931,9 @@ function parseStationsAndPlants(){
             }else{
                 $the_plant = null;
             }
-            
-            $plants[$plant_name] = $the_plant;
+            if($the_plant){
+                $plants[$plant_name] = $the_plant;
+            }
             
         }else{
             
@@ -1029,8 +1030,8 @@ function checkPlantUpdate($the_plant,$new_date,$old_date,$usda_symbol){
     $status = false;
     if($new_date > $old_date && Individual::usdaSymbolExists($usda_symbol,$mysql,$error_log) ){
         $the_plant->setUSDASymbol($usda_symbol);
-        $the_plant->setCreateDate($new_date->format("Y-m-d"));
-        $the_plant->updateUSDASymbol($mysql, $error_log);
+        $the_plant->setCreateDate($new_date);
+        $the_plant->updateSpecies($mysql, $error_log);
         $status = true;
         
     }
@@ -1364,7 +1365,7 @@ class Individual{
                     $this->getActive() . ", " .
                     $this->getSeqNum() . ", " .
                     "'" . $this->getComment() . "', " .
-                    "'" . $this->getCreateDate() . "')";
+                    "'" . $this->getCreateDate()->format("Y-m-d") . "')";
 
             $mysql->runQuery($query);
             $status = true;
@@ -1383,14 +1384,14 @@ class Individual{
                 
     }
     
-    function updateUSDASymbol(&$mysql, &$error_log){
+    function updateSpecies(&$mysql, &$error_log){
         $status = false;
         
         try{
             
             
             $query = "UPDATE usanpn2.Station_Species_Individual " .
-                    " SET Create_Date = '" . $this->createDate . "'," .
+                    " SET Create_Date = '" . $this->createDate->format("Y-m-d") . "'," .
                     " Species_ID = " . $this->species_id . 
                     " WHERE Individual_ID = " . $this->getNPNID();
 
