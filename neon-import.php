@@ -944,7 +944,7 @@ function parseStationsAndPlants(){
             $status = checkPlantUpdate(
                     $the_plant,
                     $edited_date,
-                    new DateTime($the_plant->getCreateDate()), 
+                    $the_plant->getCreateDate(), 
                     $usda_symbol, 
                     $mysql, 
                     $error_log
@@ -1175,7 +1175,7 @@ function plantExists($name){
         $plant->setActive($row['Active']);
         $plant->setSeqNum($row['Seq_Num']);
         $plant->setComment($row['Comment']);
-        $plant->setCreateDate($row['Create_Date']);
+        $plant->setCreateDate(new DateTime($row['Create_Date']));
         
         $plant->setName($name);
         $plant->setUSDASymbol($row['USDA_Symbol']);
