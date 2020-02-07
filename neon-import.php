@@ -891,7 +891,7 @@ function parseStationsAndPlants(){
                 checkPlantUpdate(
                         $the_plant,
                         $edited_date,
-                        new DateTime($the_plant->getCreateDate()), 
+                        $the_plant->getCreateDate(), 
                         $usda_symbol, 
                         $mysql, 
                         $error_log
