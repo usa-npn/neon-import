@@ -70,7 +70,6 @@ try{
 
 
 try{
-
     parseStationsAndPlants();
     parseObservations();
     logImport();
@@ -130,7 +129,11 @@ function exitProgram(){
         $email->SetFrom(EMAIL_FROM_ADDRESS, EMAIL_FROM_NAME); //Name is optional
         $email->Subject   = 'NEON Import Script Complete';
         $email->Body      = "The NEON script has finished running. Please see the attached file for any errors.";
-        $email->AddAddress( EMAIL_TO_ADDRESS );
+        $addresses = explode(",",EMAIL_TO_ADDRESS);
+        foreach($addresses as $address){
+
+            $email->AddAddress( $address );
+        }
 
         $file_to_attach = 'errors.csv';
 
@@ -225,7 +228,7 @@ function parseObservations(){
     }
     
     
-    $query = "SELECT Dataset_ID FROM usanpn2.Dataset WHERE Dataset.Dataset_Name = 'NEON'";
+    $query = "SELECT Dataset_ID FROM usanpn2.Dataset WHERE Dataset.Dataset_Name = 'NEON 2013-Present'";
     $results = $mysql->getResults($query);
     while($row = $results->fetch()){
         $neon_dataset_id = $row['Dataset_ID'];
