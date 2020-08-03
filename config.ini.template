@@ -9,5 +9,8 @@ debug=
 send_email=
 email_from_address=
 email_from_name=
+email_pass=
 email_to_address=
+email_to_name=
 web_host=
+

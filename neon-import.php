@@ -1,13 +1,18 @@
 <?php
 print "Running neon import";
 
-use PHPMailer\PHPMailer\PHPMailer;
-use PHPMailer\PHPMailer\Exception;
-require_once('output_file.php');
-require_once('database.php');
 require 'PHPMailer/src/Exception.php';
 require 'PHPMailer/src/PHPMailer.php';
 require 'PHPMailer/src/SMTP.php';
+require_once('Emailer.php');
+
+
+use PHPMailer\PHPMailer\PHPMailer;
+use PHPMailer\PHPMailer\Exception;
+use Emailer\Emailer;
+
+require_once('output_file.php');
+require_once('database.php');
 
 global $mysql;
 global $error_log;
@@ -20,7 +25,9 @@ global $indicies;
 
 $stations = array();
 $plants = array();
-$error_log = new OutputFile(__DIR__ . "/errors.csv");
+
+define('ERROR_FILE_PATH',__DIR__ . "/errors.csv");
+$error_log = new OutputFile(ERROR_FILE_PATH);
 $error_log->logError("Message", "Date", "Plant ID/Name", "Species", "Growth Form","Phenophase");
 $mysql_log = new OutputFile(__DIR__ . "/sql.txt");
 $indicies = array("observations" => array(), "plants" => array(), "updates" => array());
@@ -35,10 +42,11 @@ define('NEON_NETWORK_ID',77);
 define('GOOGLE_API_KEY',$params['google_api_key']);
 define('SEND_EMAIL',$params['send_email']);
 define('EMAIL_FROM_ADDRESS', $params['email_from_address']);
+define('EMAIL_PASS',$params['email_pass']);
 define('EMAIL_FROM_NAME',$params['email_from_name']);
 define('EMAIL_TO_ADDRESS',$params['email_to_address']);
+define('EMAIL_TO_NAME',$params['email_to_name']);
 define('WEB_HOST',$params['web_host']);
-
 
 
 //Not to be confused this isn't a flag, the actual ID for square meters
@@ -125,21 +133,20 @@ function getPreviousImportTime(){
 
 function exitProgram(){
     if(SEND_EMAIL){
-        $email = new PHPMailer();
-        $email->SetFrom(EMAIL_FROM_ADDRESS, EMAIL_FROM_NAME); //Name is optional
-        $email->Subject   = 'NEON Import Script Complete';
-        $email->Body      = "The NEON script has finished running. Please see the attached file for any errors.";
-        $addresses = explode(",",EMAIL_TO_ADDRESS);
-        foreach($addresses as $address){
 
-            $email->AddAddress( $address );
-        }
+       $emailer = new Emailer(
+            EMAIL_FROM_ADDRESS,
+            EMAIL_FROM_NAME,
+            EMAIL_PASS,
+            EMAIL_TO_ADDRESS,
+            EMAIL_TO_NAME,
+            "Test Email",
+            "The NEON script has finished running. Please see the attached file for any errors.",
+            ERROR_FILE_PATH 
+        );
 
-        $file_to_attach = 'errors.csv';
+        $emailer->send_email();
 
-        $email->AddAttachment( $file_to_attach , 'neon_errors.txt' );
-
-        return $email->Send(); 
     }
     
 }

@@ -4,3 +4,13 @@ PHPMailer/*
 /nbproject/private/
 mailoutput/
 mailoutput/*
+.Rhistory
+errors.csv
+output.txt
+last_execute.txt
+sql.txt
+R/stacked-files/
+R/stacked-files/*
+config.ini
+data/
+data/*
