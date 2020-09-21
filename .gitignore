@@ -9,6 +9,7 @@ errors.csv
 output.txt
 last_execute.txt
 sql.txt
+config.R
 R/stacked-files/
 R/stacked-files/*
 config.ini

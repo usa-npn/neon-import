@@ -47,7 +47,7 @@ class Emailer {
         $mail->isSMTP();
         $mail->Mailer = "smtp";
 
-        $mail->SMTPDebug = 1;
+        $mail->SMTPDebug = 0;
         $mail->SMTPAuth   = TRUE;
         $mail->SMTPSecure = "tls";
 

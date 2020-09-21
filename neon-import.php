@@ -96,7 +96,6 @@ function transactionComplete($station=null){
     if(DEBUG){
         $mysql->rollback();
     }else{
-               
         $mysql->commit();
         
         /*
@@ -140,7 +139,7 @@ function exitProgram(){
             EMAIL_PASS,
             EMAIL_TO_ADDRESS,
             EMAIL_TO_NAME,
-            "Test Email",
+            "NEON Import Script Complete",
             "The NEON script has finished running. Please see the attached file for any errors.",
             ERROR_FILE_PATH 
         );
@@ -249,7 +248,20 @@ function parseObservations(){
         $neon_obs_id = findAndCleanField("uid", $cells, $headers, "observations");
         
         $edited_date = findAndCleanField("editedDate", $cells, $headers, "observations");
-        $edited_date = new DateTime($edited_date);        
+        $date_field = findAndCleanField("date", $cells, $headers, "observations");
+
+        try{
+            if (strtotime($edited_date) === false) { throw new Exception();}
+            $edited_date = new DateTime($edited_date);
+        }catch(Exception $ex){
+            try{
+                if (strtotime($date_field) === false) { throw new Exception();}
+                $edited_date = new DateTime($date_field);
+            }catch(Exception $ex){
+                $edited_date = new DateTime();
+            }
+        }
+
         
         /**
          * If the record is old and hasn't been updated since the last import
@@ -431,7 +443,6 @@ function parseObservations(){
         
         
     }
-    
     fclose($fhandle);
     
 }
@@ -832,17 +843,14 @@ function parseStationsAndPlants(){
         $the_station = null;
         $the_plant = null;
         
-        
         if(!array_key_exists($station_name, $stations)){
             
             $the_station = stationExists($station_name);
             
             if($the_station){
-                
                 $stations[$station_name] = $the_station;
                 
             }else{
-            
                 try{
                     $the_station = new Station();
                     $the_station->name = $station_name;
@@ -878,13 +886,24 @@ function parseStationsAndPlants(){
             $the_station = $stations[$station_name];
         }
         
-        
         $plant_name = findAndCleanField("individualID", $cells, $headers, "plants");
         $growth_form = findAndCleanField("growthForm", $cells, $headers, "plants");
         $usda_symbol = findAndCleanField("taxonID", $cells, $headers, "plants");
         $edited_date = findAndCleanField("editedDate", $cells, $headers, "plants");
-        $edited_date = new DateTime($edited_date);
-        
+        $date_field = findAndCleanField("date", $cells, $headers, "plants");
+
+        try{           
+            if (strtotime($edited_date) === false) { throw new Exception();} 
+            $edited_date = new DateTime($edited_date);
+        }catch(Exception $ex){
+            try{
+                if (strtotime($date_field) === false) { throw new Exception();}
+                $edited_date = new DateTime($date_field);
+            }catch(Exception $ex){
+                $edited_date = new DateTime();
+            }
+        }
+
         if(!array_key_exists($plant_name, $plants)){
             
             $the_plant = plantExists($plant_name);
@@ -974,7 +993,6 @@ function parseStationsAndPlants(){
         transactionComplete($the_station);
 
     }
-    
     fclose($fhandle);
     
     $fhandle = fopen("./data/phe_perindividualperyear.csv", 'r');
@@ -1019,7 +1037,6 @@ function parseStationsAndPlants(){
         
         transactionComplete($the_station);
     }
-    
     fclose($fhandle);
     
     
@@ -1161,7 +1178,6 @@ function stationExists($name){
         $station->setLoadKey($row['Load_Key']);
         $station->setIsNew(false);
     }
-    $station=null;
     return $station;
     
 }
