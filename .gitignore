@@ -15,3 +15,6 @@ R/stacked-files/*
 config.ini
 data/
 data/*
+run.txt
+R/.RData
+R/.Rhistory
