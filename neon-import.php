@@ -1120,16 +1120,38 @@ function findNPNSpeciesID($usda_symbol, $recurse=false){
             
             //USDA Symbols between systems: NEON => NPN
             $usda_map = array(
-                "COCOC" => "COCO6",
-                "PSMEM" => "PSME",
-                "EUCA26" => "EUGR5",
-                "ARBE7" => "ARST5",
+                "ABLAL" => "ABLA",
+                "ACNEN" => "ACNE2",
                 "ACRUR" => "ACRU",
+                "ACSAS" => "ACSA3",
+                "ARAL2" => "ARAL13",
+                "ARFRF3" => "ARGR21",
+                "ARBE7" => "ARST5",
+                "ARTRT" => "ARTR2",
+                "ARVIM" => "ARVI4",
+                "BEGL/BENA" => "BENA",
+                "BOISS" => "BOIS",
+                "CATO6" => "CAAL27",
                 "CARUD" => "CARU3",
+                "CASTI3" => "CAST36",
+                "COCOC" => "COCO6",
+                "POIN5" => "DUIN2",
+                "EUCA26" => "EUGR5",
                 "GEROT" => "GERO2",
-                "QUMO4" => "QUPR2",
+                "JUCOD" => "JUCO6",
+                "JUVIV" => "JUVI",
+                "LOPR" => "KAPR",
+                "MARAR" => "MARA7",
+                "URMA3" => "MEMA22",
                 "CAHAF" => "OEHA3",
-                "BEGL/BENA" => "BENA"
+                "PICOL2" => "PICO",
+                "PICOL" => "PICO",
+                "POARA2" => "POAR2",
+                "PRSES" => "PRSE2",
+                "PSMEM" => "PSME",
+                "QUMO4" => "QUPR2",
+                "SCSCS3" => "SCSC",
+                "TRBOB" => "TRBO2"
             );
             
             if(array_key_exists($usda_symbol, $usda_map)){
