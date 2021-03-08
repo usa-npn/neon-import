@@ -9,6 +9,8 @@ dat <- loadByProduct(dpID= "DP1.10055.001",
 
                         check.size = FALSE,
 
+                        startdate="2020-01-01",
+
                         token = neon_api_key)
 
 #Output the files
