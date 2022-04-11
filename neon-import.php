@@ -225,7 +225,8 @@ function parseObservations(){
     $fhandle = fopen('./data/phe_statusintensity.csv','r');    
     $neon_dataset_id = null;
     
-    $previous_time = getPreviousImportTime();
+    //$previous_time = getPreviousImportTime();
+    $previous_time = 0;
 
     $headers = explode(",", fgets($fhandle));
     
@@ -1124,34 +1125,63 @@ function findNPNSpeciesID($usda_symbol, $recurse=false){
                 "ACNEN" => "ACNE2",
                 "ACRUR" => "ACRU",
                 "ACSAS" => "ACSA3",
+                "AMMEI2" => "AMIN3",
+                "ANGL10" => "ANGL2",
                 "ARAL2" => "ARAL13",
+                "ARBE7" => "ARST5",
                 "ARFRF3" => "ARGR21",
+                "ARVIM" => "ARVI4",
                 "ARBE7" => "ARST5",
                 "ARTRT" => "ARTR2",
                 "ARVIM" => "ARVI4",
                 "BEGL/BENA" => "BENA",
+                "BEPAP" => "BEPA",
                 "BOISS" => "BOIS",
+                "CAHAF" => "OEHA3",
                 "CATO6" => "CAAL27",
                 "CARUD" => "CARU3",
                 "CASTI3" => "CAST36",
+                "CECAC" => "CECA4",
+                "CEER2" => "CEAS",
+                "CHSE2" => "CHLA6",
+                "CLLU2" => "PELU5",
                 "COCOC" => "COCO6",
-                "POIN5" => "DUIN2",
+                "CRCOC" => "CRCO43",
+                "DITE2" => "DITE6",
+                "ERSI3" => "ERGR3",
                 "EUCA26" => "EUGR5",
+                "POIN5" => "DUIN2",
                 "GEROT" => "GERO2",
+                "HATE3" => "HACA3",
                 "JUCOD" => "JUCO6",
                 "JUVIV" => "JUVI",
+                "LATAP" => "LATA",
+                "LOAB" => "HORO3",
                 "LOPR" => "KAPR",
+                "LUAR9" => "LUNI",
                 "MARAR" => "MARA7",
                 "URMA3" => "MEMA22",
                 "CAHAF" => "OEHA3",
                 "PICOL2" => "PICO",
                 "PICOL" => "PICO",
+                "PLRO" => "PLBA4",
+                "POAR7" => "DRAR8",
                 "POARA2" => "POAR2",
+                "POBI5" => "BIOF",
+                "POCEL" => "PELO10",
+                "POVI2" => "PEVI13",
                 "PRSES" => "PRSE2",
                 "PSMEM" => "PSME",
                 "QUMO4" => "QUPR2",
+                "RUTU" => "RUNU",
+                "SAFO4" => "MIFO2",
                 "SCSCS3" => "SCSC",
-                "TRBOB" => "TRBO2"
+                "SIACS2" => "SIAC",
+                "STCAA" => "STCA5",
+                "TEACC" => "TEAC",
+                "THSTP" => "THST2",
+                "TRBOB" => "TRBO2",
+                "URMA3" => "MEMA22"
             );
             
             if(array_key_exists($usda_symbol, $usda_map)){
