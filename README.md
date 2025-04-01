@@ -68,7 +68,7 @@ sh load-neon.sh
 That's all there is to it. If there's a problem there's two log files which can be checked later, output.txt and run.txt.
 
 
-# Yearly neon release
+# Yearly Neon release
 
 Early each year neon makes a new release where we purge all of our records and rerun a full import.
 1. run all of the queries in neon-purge.sql
@@ -78,4 +78,7 @@ Early each year neon makes a new release where we purge all of our records and r
 # Monthly provisional imports
 
 A cron job will run each month on npn-util that is the same as the yearly release except no purge using a sliding window of one month for the startdate and enddate.
+
+# Supporting docs
+[A few exchanges between Ellen, Katie, Jeff, and Claire](https://docs.google.com/document/d/15TbM7Dd2uD-mzTLdXicoQB3voASqgErW34bMS8ypD9Y/edit?tab=t.0)
 
