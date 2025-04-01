@@ -67,3 +67,15 @@ sh load-neon.sh
 
 That's all there is to it. If there's a problem there's two log files which can be checked later, output.txt and run.txt.
 
+
+# Yearly neon release
+
+Early each year neon makes a new release where we purge all of our records and rerun a full import.
+1. run all of the queries in neon-purge.sql
+2. in a tmux session on npn-util run NEON-data-script.R with startdate="2012-01-01", enddate="{current-date}",
+3. run neon-import.php
+
+# Monthly provisional imports
+
+A cron job will run each month on npn-util that is the same as the yearly release except no purge using a sliding window of one month for the startdate and enddate.
+
