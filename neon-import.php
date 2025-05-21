@@ -1,15 +1,15 @@
 <?php
 print "Running neon import";
 
-require 'PHPMailer/src/Exception.php';
-require 'PHPMailer/src/PHPMailer.php';
-require 'PHPMailer/src/SMTP.php';
-require_once('Emailer.php');
+// require 'PHPMailer/src/Exception.php';
+// require 'PHPMailer/src/PHPMailer.php';
+// require 'PHPMailer/src/SMTP.php';
+// require_once('Emailer.php');
 
 
-use PHPMailer\PHPMailer\PHPMailer;
-use PHPMailer\PHPMailer\Exception;
-use Emailer\Emailer;
+// use PHPMailer\PHPMailer\PHPMailer;
+// use PHPMailer\PHPMailer\Exception;
+// use Emailer\Emailer;
 
 require_once('output_file.php');
 require_once('database.php');
@@ -56,12 +56,17 @@ define('SQUARE_METERS_DB_ID',1);
 
 
 try{
+    $pem = $params['pem_path'];
+    $options = array(
+      PDO::MYSQL_ATTR_SSL_CA => $pem,
+    );
     $mysql = new Database("mysql",
             $params['mysql_host'], 
             $params['mysql_user'],
             $params['mysql_pw'],
             $params['mysql_db'],
             $params['mysql_port'], 
+            $options,
             $mysql_log
             );
     
@@ -1163,6 +1168,7 @@ function findNPNSpeciesID($usda_symbol, $recurse=false){
                 "JUCOD" => "JUCO6",
                 "JUVIV" => "JUVI",
                 "LATAP" => "LATA",
+                "LIMBOL2" => "LIBO3",
                 "LOAB" => "HORO3",
                 "LOPR" => "KAPR",
                 "LUAR9" => "LUNI",
